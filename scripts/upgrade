@@ -72,7 +72,7 @@ ynh_script_progression --message="Backing up the app before upgrading (may take 
 
 # Made a backup only after the version 11.0.0
 # Before, the datas will be always saved.
-# Get the current version number of nextcloud/owncloud
+# Get the current version number of nextcloud
 current_version=$(grep OC_VersionString "$final_path/version.php" | cut -d\' -f2)
 current_major_version=${current_version%%.*}
 
@@ -99,31 +99,6 @@ fi
 
 # Exit if an error occurs during the execution of the script
 ynh_abort_if_errors
-
-#=================================================
-# HANDLE MIGRATION FROM OWNCLOUD
-#=================================================
-
-ynh_handle_app_migration "owncloud" "owncloud_migration"
-if [ $migration_process -eq 1 ]
-then
-    # If a migration has been performed
-    # Reload some values changed by the migration process
-    final_path=$(ynh_app_setting_get --app=$app --key=final_path)
-    db_name=$(ynh_app_setting_get --app=$app --key=db_name)
-
-    # Remove the old fake package for owncloud.
-    # Its name is specific, so the migration process can't remove it
-    ynh_package_autopurge owncloud-deps
-
-    # Change the database access in the config
-    ynh_replace_string "\('dbname' =>\).*" "\1 '$db_name'," "$final_path/config/config.php"
-    ynh_replace_string "\('dbuser' =>\).*" "\1 '$db_name'," "$final_path/config/config.php"
-
-    # Change the path of the data directory
-    ynh_replace_string "\('dbuser' =>\).*" "\1 '$db_name'," "$final_path/config/config.php"
-    ynh_replace_string "\('datadirectory' =>.*\)$old_app" "\1$app" "$final_path/config/config.php"
-fi
 
 #=================================================
 # CHECK THE PATH
@@ -473,27 +448,6 @@ ynh_app_setting_set --app=$app --key=skipped_regex \
 ynh_script_progression --message="Reloading NGINX web server..."
 
 ynh_systemd_action --service_name=nginx --action=reload
-
-#=================================================
-# FINISH MIGRATION PROCESS
-#=================================================
-
-if [ $migration_process -eq 1 ]
-then
-    ynh_print_info --message="ownCloud has been successfully migrated to Nextcloud! \
-A last scheduled operation will run in a couple of minutes to finish the \
-migration in YunoHost side. Do not proceed any application operation while \
-you don't see Nextcloud as installed."
-
-    # Execute a post migration script after the end of this upgrade.
-    # Mainly for some cleaning
-    script_post_migration=owncloud_post_migration.sh
-    ynh_replace_string --match_string="__OLD_APP__" --replace_string="$old_app" --target_file=../conf/$script_post_migration
-    ynh_replace_string --match_string="__NEW_APP__" --replace_string="$app" --target_file=../conf/$script_post_migration
-    cp ../conf/$script_post_migration /tmp
-    chmod +x /tmp/$script_post_migration
-    (cd /tmp; echo "/tmp/$script_post_migration > /tmp/$script_post_migration.log 2>&1" | at now + 2 minutes)
-fi
 
 #=================================================
 # END OF SCRIPT
